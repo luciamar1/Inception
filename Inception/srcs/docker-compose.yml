@@ -1,0 +1,92 @@
+services:
+  mariadb:
+    build: ./requirements/mariadb
+    container_name: mariadb
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - MYSQL_DATABASE=wordpress
+      - MYSQL_USER=lucia
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      inception:
+        aliases:
+          - mariadb
+    secrets:
+      - db_root_password
+      - db_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      start_period: 40s
+
+  wordpress:
+    build: ./requirements/wordpress
+    container_name: wordpress
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    volumes:
+      - wordpress_data:/var/www/wordpress
+    networks:
+      inception:
+        aliases:
+          - wordpress
+    secrets:
+      - db_password
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep php-fpm7.4 || exit 1"]
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  nginx:
+    build: ./requirements/nginx
+    container_name: nginx
+    restart: unless-stopped
+    depends_on:
+      wordpress:
+        condition: service_healthy
+    volumes:
+      - wordpress_data:/var/www/wordpress
+    ports:
+      - "443:443"
+    networks:
+      inception:
+        aliases:
+          - nginx
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  inception:
+    driver: bridge
+    name: inception
+
+volumes:
+  mariadb_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/lucia/data/mariadb
+  
+  wordpress_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/lucia/data/wordpress
+
+secrets:
+  db_root_password:
+    file: ../secrets/db_root_password.txt
+  db_password:
+    file: ../secrets/db_password.txt
