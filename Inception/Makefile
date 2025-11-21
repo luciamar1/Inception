@@ -1,10 +1,9 @@
 # Variables
 COMPOSE = docker compose -f srcs/docker-compose.yml
-DATA_PATH = /home/lucia/data
 
 all: up
 
-up: dirs
+up:
 	$(COMPOSE) up -d --build
 
 down:
@@ -18,14 +17,10 @@ clean: down
 	docker system prune -f
 
 fclean: clean
-	sudo rm -rf $(DATA_PATH)
 	docker system prune -af --volumes
+	docker volume rm -f inception_mariadb_data inception_wordpress_data 2>/dev/null || true
 
 re: fclean all
-
-dirs:
-	@mkdir -p $(DATA_PATH)/mariadb
-	@mkdir -p $(DATA_PATH)/wordpress
 
 logs:
 	$(COMPOSE) logs -f
@@ -33,4 +28,4 @@ logs:
 status:
 	docker ps
 
-.PHONY: all up down stop clean fclean re dirs logs status
+.PHONY: all up down stop clean fclean re logs status
