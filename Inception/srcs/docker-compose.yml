@@ -4,31 +4,32 @@ services:
     container_name: mariadb
     restart: unless-stopped
     env_file: .env
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - DB_PASSWORD=${DB_PASSWORD}
     volumes:
-      - mariadb_data:/var/lib/mysql
+      - mariadb_data:/var/lib/mysql  # CAMBIAR ESTO
     networks:
-      inception:
-        aliases:
-          - mariadb
-    secrets:
-      - db_root_password
-      - db_password
+      - inception
 
   wordpress:
     build: ./requirements/wordpress
     container_name: wordpress
     restart: unless-stopped
     env_file: .env
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - WP_USER=${WP_USER}
+      - WP_EMAIL=${WP_EMAIL}
+      - DB_PASSWORD=${DB_PASSWORD}
     depends_on:
       - mariadb
     volumes:
-      - wordpress_data:/var/www/wordpress
+      - wordpress_data:/var/www/wordpress  # CAMBIAR ESTO
     networks:
-      inception:
-        aliases:
-          - wordpress
-    secrets:
-      - db_password
+      - inception
 
   nginx:
     build: ./requirements/nginx
@@ -37,27 +38,27 @@ services:
     depends_on:
       - wordpress
     volumes:
-      - wordpress_data:/var/www/wordpress
+      - wordpress_data:/var/www/wordpress  # CAMBIAR ESTO
     ports:
       - "443:443"
     networks:
-      inception:
-        aliases:
-          - nginx
+      - inception
 
 networks:
   inception:
     driver: bridge
-    name: inception
 
+# AÑADIR ESTA SECCIÓN DE VOLÚMENES
 volumes:
   mariadb_data:
     driver: local
+    driver_opts:
+      type: none
+      device: /home/lucia/data/mariadb
+      o: bind
   wordpress_data:
     driver: local
-
-secrets:
-  db_root_password:
-    file: ../secrets/db_root_password.txt
-  db_password:
-    file: ../secrets/db_password.txt
+    driver_opts:
+      type: none
+      device: /home/lucia/data/wordpress
+      o: bind

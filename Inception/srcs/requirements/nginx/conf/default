@@ -1,21 +1,13 @@
 server {
     listen 443 ssl;
-    listen [::]:443 ssl;
-    
     server_name lucia-ma.42.fr;
     
-    # SSL
     ssl_certificate /etc/nginx/ssl/lucia-ma.42.fr.crt;
     ssl_certificate_key /etc/nginx/ssl/lucia-ma.42.fr.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     
-    # Root y índice
     root /var/www/wordpress;
-    index index.php index.html index.htm;
-    
-    # Logs
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log;
+    index index.php;
     
     location / {
         try_files $uri $uri/ /index.php?$args;
@@ -24,21 +16,6 @@ server {
     location ~ \.php$ {
         include fastcgi_params;
         fastcgi_pass wordpress:9000;
-        fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_param HTTPS on;
-        
-        # Timeout aumentado para WordPress
-        fastcgi_read_timeout 300;
-    }
-    
-    location ~ /\.ht {
-        deny all;
-    }
-    
-    # Cache para archivos estáticos
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
     }
 }
