@@ -21,3 +21,12 @@ thread_cache_size       = 8
 query_cache_type        = 1
 query_cache_size        = 16M
 skip-name-resolve
+
+# Configuración de red CRÍTICA
+#bind-address           = 0.0.0.0  # Comentado para que el script lo maneje
+
+[client]
+default-character-set   = utf8mb4
+
+[mysql]
+default-character-set   = utf8mb4

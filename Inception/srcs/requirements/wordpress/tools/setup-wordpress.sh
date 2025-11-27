@@ -3,33 +3,82 @@ set -e
 
 echo "🔧 Iniciando WordPress..."
 
-# Leer de variables de entorno (NO más secrets)
+# Leer de variables de entorno
 DB_PASSWORD=${DB_PASSWORD}
+DOMAIN_NAME=${DOMAIN_NAME}
+WP_USER=${WP_USER}
+WP_EMAIL=${WP_EMAIL}
 
-# Esperar a MariaDB
+# Verificar que las variables de entorno están seteadas
+if [ -z "$DB_PASSWORD" ]; then
+    echo "❌ ERROR: DB_PASSWORD no está definida"
+    exit 1
+fi
+
+echo "📋 Variables de entorno:"
+echo "   DOMAIN_NAME: $DOMAIN_NAME"
+echo "   WP_USER: $WP_USER"
+echo "   WP_EMAIL: $WP_EMAIL"
+
+# Esperar a MariaDB con timeout
 echo "⏳ Esperando a MariaDB..."
-until mysql -h mariadb -u wpuser -p${DB_PASSWORD} -e "SELECT 1;" &>/dev/null; do
+MAX_RETRIES=30
+RETRY_COUNT=0
+
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if mysql -h mariadb -u wpuser -p${DB_PASSWORD} wordpress -e "SELECT 1;" &>/dev/null; then
+        echo "✅ Conectado a MariaDB y base de datos accesible"
+        break
+    fi
+    echo "⏳ Intento $((RETRY_COUNT + 1))/$MAX_RETRIES - Esperando MariaDB..."
     sleep 2
+    RETRY_COUNT=$((RETRY_COUNT + 1))
 done
 
-echo "✅ Conectado a MariaDB"
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ ERROR: No se pudo conectar a la base de datos después de $MAX_RETRIES intentos"
+    echo "💡 Verificando estado..."
+    mysql -h mariadb -u wpuser -p${DB_PASSWORD} -e "SHOW DATABASES;" || echo "❌ No se puede conectar"
+    exit 1
+fi
 
 cd /var/www/wordpress
 
-# Configurar WordPress si no existe
-if [ ! -f wp-config.php ]; then
-    echo "📥 Descargando WordPress..."
-    wp core download --allow-root --force
-   
-    echo "⚙️ Creando configuración..."
-    wp config create \
-        --dbname=wordpress \
-        --dbuser=wpuser \
-        --dbpass=${DB_PASSWORD} \
-        --dbhost=mariadb \
-        --allow-root \
-        --force
-   
+# Verificar si WordPress ya está instalado
+if wp core is-installed --allow-root 2>/dev/null; then
+    echo "✅ WordPress ya está instalado y configurado"
+else
+    echo "📥 WordPress no está instalado, procediendo con instalación..."
+    
+    # Descargar WordPress si no existe
+    if [ ! -f wp-config.php ]; then
+        echo "📥 Descargando WordPress..."
+        wp core download --allow-root --force
+    fi
+    
+    # Crear configuración
+    if [ ! -f wp-config.php ]; then
+        echo "⚙️ Creando configuración de WordPress..."
+        wp config create \
+            --dbname=wordpress \
+            --dbuser=wpuser \
+            --dbpass=${DB_PASSWORD} \
+            --dbhost=mariadb \
+            --allow-root \
+            --force
+    fi
+    
+    # Verificar que podemos acceder a la base de datos
+    echo "🔍 Verificando acceso a base de datos..."
+    if mysql -h mariadb -u wpuser -p${DB_PASSWORD} wordpress -e "SHOW TABLES;" &>/dev/null; then
+        echo "✅ Base de datos accesible"
+    else
+        echo "❌ No se puede acceder a la base de datos 'wordpress'"
+        echo "💡 Creando base de datos si no existe..."
+        mysql -h mariadb -u root -p${DB_ROOT_PASSWORD} -e "CREATE DATABASE IF NOT EXISTS wordpress; GRANT ALL ON wordpress.* TO 'wpuser'@'%';" 2>/dev/null || echo "⚠️ No se pudo crear BD"
+    fi
+    
+    # Instalar WordPress
     echo "🚀 Instalando WordPress..."
     wp core install \
         --url=https://${DOMAIN_NAME} \
@@ -39,42 +88,32 @@ if [ ! -f wp-config.php ]; then
         --admin_email=${WP_EMAIL} \
         --skip-email \
         --allow-root
-   
-    echo "✅ WordPress instalado"
-else
-    echo "✅ WordPress ya está configurado"
+    
+    # Verificar instalación
+    if wp core is-installed --allow-root; then
+        echo "✅ WordPress instalado correctamente en https://${DOMAIN_NAME}"
+        echo "👤 Usuario admin: ${WP_USER}"
+        echo "🔐 Password: 1234Martin"
+    else
+        echo "❌ ERROR: WordPress no se pudo instalar"
+        echo "💡 Puedes completar la instalación manualmente en https://${DOMAIN_NAME}"
+    fi
 fi
 
-# Permisos
+# Configurar permisos
+echo "🔧 Configurando permisos..."
 chown -R www-data:www-data /var/www/wordpress
+find /var/www/wordpress -type d -exec chmod 755 {} \;
+find /var/www/wordpress -type f -exec chmod 644 {} \;
 
-echo "🎉 Iniciando PHP-FPM..."
-
-# Verificar qué versión de PHP-FPM está disponible
-echo "🔍 Buscando PHP-FPM..."
-find /usr -name "*fpm*" -type f 2>/dev/null | grep -E "(php.*fpm|fpm)" || echo "No se encontraron binarios fpm"
-
-# Intentar con el binario estándar
-if command -v php-fpm8.4 >/dev/null 2>&1; then
-    echo "✓ Usando php-fpm8.4"
-    exec php-fpm8.4 -F -R
-elif command -v php-fpm8.3 >/dev/null 2>&1; then
-    echo "✓ Usando php-fpm8.3"
-    exec php-fpm8.3 -F -R
-elif command -v php-fpm8.2 >/dev/null 2>&1; then
-    echo "✓ Usando php-fpm8.2"
-    exec php-fpm8.2 -F -R
-elif command -v php-fpm8.1 >/dev/null 2>&1; then
-    echo "✓ Usando php-fpm8.1"
-    exec php-fpm8.1 -F -R
-elif command -v php-fpm >/dev/null 2>&1; then
-    echo "✓ Usando php-fpm"
-    exec php-fpm -F -R
-else
-    echo "❌ ERROR: No se encontró php-fpm"
-    echo "📦 Paquetes PHP instalados:"
-    dpkg -l | grep php || echo "No hay paquetes PHP"
-    echo "💡 Intentando ejecutar el servicio directamente..."
-    service php8.4-fpm start || service php8.3-fpm start || service php8.2-fpm start || service php8.1-fpm start || service php-fpm start
-    exit 1
+# Permisos específicos para wp-config.php
+if [ -f wp-config.php ]; then
+    chmod 640 wp-config.php
 fi
+
+# Crear directorio para PHP-FPM
+mkdir -p /run/php
+chown www-data:www-data /run/php
+
+echo "🎉 Iniciando PHP-FPM 8.4..."
+exec php-fpm8.4 -F -R

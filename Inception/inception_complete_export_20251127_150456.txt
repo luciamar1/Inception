@@ -1,5 +1,5 @@
 === EXPORTACIÓN COMPLETA DEL PROYECTO INCEPTION ===
-Fecha: Mon Nov 24 09:11:30 PM CET 2025
+Fecha: Thu Nov 27 03:04:56 PM CET 2025
 Directorio: /home/lucia/Inception/Inception
 ===========================================
 
@@ -9,12 +9,8 @@ Directorio: /home/lucia/Inception/Inception
 ├── cookies.txt
 ├── crear_backup.sh
 ├── export_inception.sh
-├── inception_complete_export_20251124_211130.txt
+├── inception_complete_export_20251127_150456.txt
 ├── Makefile
-├── secrets
-│   ├── credentials.txt
-│   ├── db_password.txt
-│   └── db_root_password.txt
 ├── srcs
 │   ├── docker-compose.yml
 │   ├── .env
@@ -44,12 +40,9 @@ Directorio: /home/lucia/Inception/Inception
 │               └── setup-wordpress.sh
 └── writefile.sh
 
-13 directories, 26 files
+12 directories, 23 files
 
 === SECRETS (NOMBRES SOLAMENTE) ===
-db_password.txt
-credentials.txt
-db_root_password.txt
 
 === ARCHIVO: srcs/docker-compose.yml ===
 === RUTA COMPLETA: /home/lucia/Inception/Inception/srcs/docker-compose.yml ===
@@ -67,13 +60,12 @@ services:
     environment:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - MYSQL_USER=${MYSQL_USER}
+      - DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - DB_PASSWORD=${DB_PASSWORD}
     volumes:
-      - /home/lucia/data/mariadb:/var/lib/mysql
+      - mariadb_data:/var/lib/mysql  # CAMBIAR ESTO
     networks:
       - inception
-    secrets:
-      - db_root_password
-      - db_password
 
   wordpress:
     build: ./requirements/wordpress
@@ -84,14 +76,13 @@ services:
       - DOMAIN_NAME=${DOMAIN_NAME}
       - WP_USER=${WP_USER}
       - WP_EMAIL=${WP_EMAIL}
+      - DB_PASSWORD=${DB_PASSWORD}
     depends_on:
       - mariadb
     volumes:
-      - /home/lucia/data/wordpress:/var/www/wordpress
+      - wordpress_data:/var/www/wordpress  # CAMBIAR ESTO
     networks:
       - inception
-    secrets:
-      - db_password
 
   nginx:
     build: ./requirements/nginx
@@ -100,7 +91,7 @@ services:
     depends_on:
       - wordpress
     volumes:
-      - /home/lucia/data/wordpress:/var/www/wordpress
+      - wordpress_data:/var/www/wordpress  # CAMBIAR ESTO
     ports:
       - "443:443"
     networks:
@@ -110,11 +101,20 @@ networks:
   inception:
     driver: bridge
 
-secrets:
-  db_root_password:
-    file: ../secrets/db_root_password.txt
-  db_password:
-    file: ../secrets/db_password.txt
+# AÑADIR ESTA SECCIÓN DE VOLÚMENES
+volumes:
+  mariadb_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/lucia/data/mariadb
+      o: bind
+  wordpress_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/lucia/data/wordpress
+      o: bind
 
 --- FIN DE srcs/docker-compose.yml ---
 ===========================================
@@ -126,12 +126,17 @@ secrets:
 === PROPIETARIO: root ===
 
 --- CONTENIDO ---
+# Archivo: srcs/.env
 # Domain (MUST be your login.42.fr)
 DOMAIN_NAME=lucia-ma.42.fr
 
 # Database
 MYSQL_DATABASE=wordpress
 MYSQL_USER=wpuser
+
+# Passwords (all set to 1234Martin)
+DB_ROOT_PASSWORD=1234Martin
+DB_PASSWORD=1234Martin
 
 # WordPress Admin (cannot contain admin/Admin/administrator/Administrator)
 WP_USER=lucia
@@ -424,9 +429,9 @@ pm.max_spare_servers = 3
 #!/bin/bash
 set -e
 
-# Leer secrets
-DB_ROOT_PASSWORD=$(cat /run/secrets/db_root_password)
-DB_PASSWORD=$(cat /run/secrets/db_password)
+# Leer de variables de entorno (NO más secrets)
+DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+DB_PASSWORD=${DB_PASSWORD}
 
 # Configurar directorios
 mkdir -p /run/mysqld
@@ -436,14 +441,14 @@ chown -R mysql:mysql /run/mysqld
 if [ ! -d "/var/lib/mysql/mysql" ]; then
     echo "📦 Inicializando base de datos por primera vez..."
     mysql_install_db --user=mysql --ldata=/var/lib/mysql
-    
+   
     # Configuración inicial
     echo "🚀 Configurando MariaDB..."
     mysqld --user=mysql --skip-networking --socket=/run/mysqld/mysqld.sock &
     MYSQL_PID=$!
-    
+   
     sleep 15
-    
+   
     mysql -S /run/mysqld/mysqld.sock << EOF
 ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
 CREATE USER 'root'@'%' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
@@ -485,8 +490,8 @@ set -e
 
 echo "🔧 Iniciando WordPress..."
 
-# Leer secrets
-DB_PASSWORD=$(cat /run/secrets/db_password)
+# Leer de variables de entorno (NO más secrets)
+DB_PASSWORD=${DB_PASSWORD}
 
 # Esperar a MariaDB
 echo "⏳ Esperando a MariaDB..."
@@ -502,7 +507,7 @@ cd /var/www/wordpress
 if [ ! -f wp-config.php ]; then
     echo "📥 Descargando WordPress..."
     wp core download --allow-root --force
-    
+   
     echo "⚙️ Creando configuración..."
     wp config create \
         --dbname=wordpress \
@@ -511,17 +516,17 @@ if [ ! -f wp-config.php ]; then
         --dbhost=mariadb \
         --allow-root \
         --force
-    
+   
     echo "🚀 Instalando WordPress..."
     wp core install \
-        --url=https://lucia-ma.42.fr \
+        --url=https://${DOMAIN_NAME} \
         --title="Inception" \
-        --admin_user=lucia \
-        --admin_password=${DB_PASSWORD} \
-        --admin_email=lucia-ma@student.42madrid.com \
+        --admin_user=${WP_USER} \
+        --admin_password=1234Martin \
+        --admin_email=${WP_EMAIL} \
         --skip-email \
         --allow-root
-    
+   
     echo "✅ WordPress instalado"
 else
     echo "✅ WordPress ya está configurado"
@@ -701,22 +706,28 @@ tmp/
 ===========================================
 
 === INFORMACIÓN DEL SISTEMA ===
-Sistema: Linux inception 6.12.57+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.57-1 (2025-11-05) x86_64 GNU/Linux
-Docker version: Docker version 29.0.2, build 8108357
-Docker Compose version: Docker Compose version v2.40.3
+Sistema: Linux Inception 6.12.57+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.57-1 (2025-11-05) x86_64 GNU/Linux
+Docker version: Docker version 26.1.5+dfsg1, build a72d7cd
+Docker Compose version: Docker Compose version 2.26.1-4
 
 === ESTADO DE CONTENEDORES ===
-CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+CONTAINER ID   IMAGE            COMMAND                 CREATED         STATUS         PORTS                                   NAMES
+ef3350465323   srcs-nginx       "/start-nginx.sh"       6 minutes ago   Up 6 minutes   0.0.0.0:443->443/tcp, :::443->443/tcp   nginx
+741220ec24b7   srcs-wordpress   "/setup-wordpress.sh"   6 minutes ago   Up 6 minutes   9000/tcp                                wordpress
+41b77088b5aa   srcs-mariadb     "/start-mariadb.sh"     6 minutes ago   Up 6 minutes   3306/tcp                                mariadb
 
 === REDES DOCKER ===
-NETWORK ID     NAME      DRIVER    SCOPE
-838db27873ea   bridge    bridge    local
-95a189078f33   host      host      local
-9469ba66ad11   none      null      local
+NETWORK ID     NAME             DRIVER    SCOPE
+491da5a35402   bridge           bridge    local
+84be41e3bcba   host             host      local
+d1f6afdc53c6   none             null      local
+6e653392db56   srcs_inception   bridge    local
 
 === VOLÚMENES DOCKER ===
 DRIVER    VOLUME NAME
+local     srcs_mariadb_data
+local     srcs_wordpress_data
 
 === EXPORTACIÓN COMPLETADA ===
-Archivo generado: inception_complete_export_20251124_211130.txt
-Tamaño total: 20K
+Archivo generado: inception_complete_export_20251127_150456.txt
+Tamaño total: 24K

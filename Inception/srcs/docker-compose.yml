@@ -10,7 +10,7 @@ services:
       - DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
       - DB_PASSWORD=${DB_PASSWORD}
     volumes:
-      - mariadb_data:/var/lib/mysql  # CAMBIAR ESTO
+      - mariadb_data:/var/lib/mysql
     networks:
       - inception
 
@@ -27,7 +27,7 @@ services:
     depends_on:
       - mariadb
     volumes:
-      - wordpress_data:/var/www/wordpress  # CAMBIAR ESTO
+      - wordpress_data:/var/www/wordpress
     networks:
       - inception
 
@@ -38,7 +38,7 @@ services:
     depends_on:
       - wordpress
     volumes:
-      - wordpress_data:/var/www/wordpress  # CAMBIAR ESTO
+      - wordpress_data:/var/www/wordpress
     ports:
       - "443:443"
     networks:
@@ -48,17 +48,6 @@ networks:
   inception:
     driver: bridge
 
-# AÑADIR ESTA SECCIÓN DE VOLÚMENES
 volumes:
   mariadb_data:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/lucia/data/mariadb
-      o: bind
   wordpress_data:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/lucia/data/wordpress
-      o: bind

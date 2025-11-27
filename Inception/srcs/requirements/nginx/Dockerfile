@@ -8,7 +8,7 @@ RUN apt-get update -y && \
 RUN mkdir -p /etc/nginx/ssl && \
     mkdir -p /var/run/nginx
 
-# Copiar configuración del sitio al directorio conf.d (que ya está incluido en nginx.conf por defecto)
+# Copiar configuración
 COPY conf/default /etc/nginx/conf.d/default.conf
 
 # Copiar script de inicio
